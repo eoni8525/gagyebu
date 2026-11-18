@@ -324,6 +324,9 @@ body[data-tab="home"] .wrap [data-tab]:not([data-tab="home"]),body[data-tab="day
 .day-list .tg{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;color:var(--fg)}
 .daypanel .namerow span{align-self:center;white-space:nowrap}
 #dWrite{margin-top:10px;width:100%;display:block}
+#bkSet .linkbtn{align-self:flex-start;font-size:13px}
+#bkPaste{width:100%;font:inherit;font-size:12px;color:var(--fg);background:var(--field);border:1px solid transparent;border-radius:8px;padding:8px;resize:vertical}
+#bkPaste:focus{border-color:var(--accent);outline:none;background:var(--surface)}
 @media (prefers-reduced-motion:reduce){.bar .fill{transition:none}}
 </style>
 
@@ -450,11 +453,13 @@ body[data-tab="home"] .wrap [data-tab]:not([data-tab="home"]),body[data-tab="day
       <div class="namerow"><input type="text" id="catNew" maxlength="12" placeholder="새 구분 이름" aria-label="새 구분 이름"><button type="button" id="catAdd" class="savebtn">만들기</button></div>
       <div class="quick-msg" id="catMsg" role="status"></div>
     </section>
-    <section class="panel export" id="bkSet" hidden>
-      <h2>백업 (폰 바꿀 때 꼭!)</h2>
-      <p class="wk-hint">이 앱은 기록을 <b>이 폰 안에만</b> 저장해요. 폰을 바꾸거나 인터넷 기록(사이트 데이터)을 지우면 사라지니, 가끔 백업 파일을 저장해 두세요. 새 폰에서는 '백업 불러오기'로 그대로 이어 써요.</p>
+    <section class="panel export" id="bkSet">
+      <h2 id="bkTitle">백업 (폰 바꿀 때 꼭!)</h2>
+      <p class="wk-hint" id="bkDesc">이 앱은 기록을 <b>이 폰 안에만</b> 저장해요. 폰을 바꾸거나 인터넷 기록(사이트 데이터)을 지우면 사라지니, 가끔 백업 파일을 저장해 두세요. 새 폰에서는 '백업 불러오기'로 그대로 이어 써요.</p>
       <div class="namerow"><button type="button" id="bkSave" class="exportbtn">백업 파일 저장</button><button type="button" id="bkLoad" class="exportbtn">백업 불러오기</button></div>
-      <input type="file" id="bkFile" accept=".json,application/json" hidden>
+      <button type="button" id="bkCopy" class="linkbtn">파일 저장이 안 되면: 백업 내용 복사하기</button>
+      <div id="bkPasteBox" class="pinform"><label>복사해 온 백업 내용 붙여넣기<textarea id="bkPaste" rows="3" placeholder="구글 가계부에서 '백업 내용 복사하기'로 복사한 글자를 여기에 붙여넣으세요"></textarea></label><button type="button" id="bkPasteGo" class="exportbtn">붙여넣은 내용으로 불러오기</button></div>
+      <input type="file" id="bkFile" accept=".json,application/json,text/plain" hidden>
       <div class="quick-msg" id="bkMsg" role="status"></div>
     </section>
     <section class="panel export" id="pinSet">
@@ -478,7 +483,7 @@ body[data-tab="home"] .wrap [data-tab]:not([data-tab="home"]),body[data-tab="day
       <p class="wk-hint">카테고리와 그래프를 한꺼번에 접거나 펴요. 이 폰에만 적용돼요.</p>
       <div class="namerow"><button type="button" id="svFold" class="exportbtn">모두 접기</button><button type="button" id="svOpen" class="exportbtn">모두 펴기</button></div>
     </section>
-    <p class="wk-hint" style="text-align:center">앱 버전 <b class="num">2026.11.18-2212</b></p>
+    <p class="wk-hint" style="text-align:center">앱 버전 <b class="num">2026.11.18-2218</b></p>
   </div>
 </section>
 
@@ -1386,36 +1391,64 @@ render();
 // ---------- 백업 (폰에만 저장하는 버전) ----------
 const BK_KEYS=k=>k.indexOf(LKEY)===0||k===IKEY||k==='gagyebu-name';
 function saveBlob(name,blob){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)}
+// 백업 형식(v2, 구글 버전·웹앱·미리보기 공통): {app:'gagyebu',v:2,at,name,months:{'2026-11':'{…달 기록 JSON…}'},inst:[할부…]}
+async function collectBackup(){
+  if(dirty)await save();if(instDirty)await saveInst();
+  const months={};let instList=[],name=$('appname').textContent||'';
+  if(GAS){const r=await call('exportData',PIN);(r.months||[]).forEach(([ym2,j])=>{months[ym2]=j});instList=r.inst||[];name=r.name||name}
+  else{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.indexOf(LKEY)===0)months[k.slice(LKEY.length)]=localStorage.getItem(k)}
+    try{instList=JSON.parse(localStorage.getItem(IKEY)||'[]')}catch(e){instList=[]}}
+  return {app:'gagyebu',v:2,at:new Date().toISOString(),name,months,inst:instList};
+}
+function readBackup(j){ // v1(웹앱 첫 버전)과 v2 모두 읽기 → {name, months, inst}
+  if(!j||j.app!=='gagyebu')throw 0;
+  if(j.v===2)return {name:j.name||'',months:j.months||{},inst:Array.isArray(j.inst)?j.inst:[]};
+  const m={};let inst=[],name='';Object.entries(j.data||{}).forEach(([k,v])=>{const mm=k.match(/(\d{4}-\d{2})$/);if(/-m-|demo-/.test(k)&&mm)m[mm[1]]=v;else if(/inst/.test(k)){try{inst=JSON.parse(v)}catch(e){}}else if(/name/.test(k))name=v});
+  return {name,months:m,inst};
+}
 async function doBackup(){
-  const msg=$('bkMsg');try{if(dirty)await save();if(instDirty)await saveInst();
-    const data={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(BK_KEYS(k))data[k]=localStorage.getItem(k)}
-    const n=Object.keys(data).filter(k=>k.indexOf(LKEY)===0).length;if(!n){msg.textContent='아직 저장된 기록이 없어요.';return}
+  const msg=$('bkMsg');try{
+    const b=await collectBackup();const n=Object.keys(b.months).length;if(!n){msg.textContent='아직 저장된 기록이 없어요.';return}
     const d=new Date(),fname='gagyebu_backup_'+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'.json';
-    const blob=new Blob([JSON.stringify({app:'gagyebu',v:1,at:d.toISOString(),data})],{type:'application/json'});
+    const blob=new Blob([JSON.stringify(b)],{type:'application/json'});
     if(MODE==='preview'){const dl=window.claude&&window.claude.use?await window.claude.use('downloads'):null;if(!dl){msg.textContent='미리보기에서는 파일을 받을 수 없어요.';return}await dl.save({filename:fname,data:blob})}
     else saveBlob(fname,blob);
     try{localStorage.setItem('gagyebu-lastbackup',String(Date.now()))}catch(e){}
-    msg.textContent=fname+' ('+n+'달 기록)을 저장했어요. 카톡 나에게 보내기나 드라이브에 올려 두면 안전해요.';drawBackupNag();
-  }catch(e){msg.textContent=(e&&e.code==='declined')?'저장을 취소했어요.':'백업하지 못했어요: '+String(e&&e.message||e)}
+    msg.textContent=GAS?fname+' ('+n+'달 기록, 할부 '+b.inst.length+'개)을 저장했어요. 웹앱에서 ⚙ 설정 → "백업 불러오기"로 이 파일을 고르세요.':fname+' ('+n+'달 기록)을 저장했어요. 카톡 나에게 보내기나 드라이브에 올려 두면 안전해요.';drawBackupNag();
+  }catch(e){if(isPinErr(e)){pinFail();return}msg.textContent=(e&&e.code==='declined')?'저장을 취소했어요.':'백업하지 못했어요: '+String(e&&e.message||e)}
+}
+async function doCopy(){
+  const msg=$('bkMsg');try{const b=await collectBackup();const t=JSON.stringify(b);
+    try{await navigator.clipboard.writeText(t);msg.textContent='복사했어요 ('+Object.keys(b.months).length+'달 기록). 웹앱 ⚙ 설정 → 백업 칸 아래 "붙여넣기"에 붙여넣으세요. 카톡 나에게 보내기에 붙여 두었다가 옮겨도 돼요.'}
+    catch(e){$('bkPaste').value=t;$('bkPasteBox').hidden=false;$('bkPaste').focus();$('bkPaste').select();msg.textContent='자동 복사가 안 돼서 아래 칸에 내용을 넣어 두었어요. 칸을 길게 눌러 전체 선택 → 복사하세요.'}
+  }catch(e){if(isPinErr(e)){pinFail();return}msg.textContent='복사하지 못했어요: '+String(e&&e.message||e)}
 }
 let bkPending=null;
+function stageBackup(text){try{const b=readBackup(JSON.parse(text));const n=Object.keys(b.months).length;if(!n)throw 0;bkPending=b;$('bkLoad').textContent='한 번 더 누르면 불러와요';
+    $('bkMsg').textContent=n+'달 기록'+(b.inst.length?', 할부 '+b.inst.length+'개':'')+(b.name?' ("'+b.name+'")':'')+'이에요. 지금 이 폰의 기록은 이 백업으로 바뀌어요. 맞으면 "한 번 더 누르면 불러와요"를 누르세요.'}
+  catch(e){$('bkMsg').textContent='가계부 백업이 아니에요. "gagyebu_backup_…json" 파일이나 복사한 백업 내용을 넣어 주세요.'}}
 $('bkSave').addEventListener('click',doBackup);
+$('bkCopy').addEventListener('click',doCopy);
 $('bkLoad').addEventListener('click',()=>{if(bkPending){applyBackup(bkPending);return}$('bkFile').value='';$('bkFile').click()});
-$('bkFile').addEventListener('change',()=>{const f=$('bkFile').files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(j.app!=='gagyebu'||!j.data)throw 0;
-    const n=Object.keys(j.data).filter(k=>k.indexOf(LKEY)===0).length;bkPending=j;$('bkLoad').textContent='한 번 더 누르면 불러와요';
-    $('bkMsg').textContent=(j.at||'').slice(0,10)+' 백업 ('+n+'달 기록)이에요. 지금 이 폰의 기록은 이 백업으로 바뀌어요. 맞으면 버튼을 한 번 더 누르세요.'}
-  catch(e){$('bkMsg').textContent='가계부 백업 파일이 아니에요. "gagyebu_backup_…json" 파일을 골라 주세요.'}};r.readAsText(f)});
-function applyBackup(j){try{const del=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(BK_KEYS(k))del.push(k)}del.forEach(k=>localStorage.removeItem(k));
-  Object.entries(j.data).forEach(([k,v])=>{if(BK_KEYS(k))localStorage.setItem(k,v)});$('bkMsg').textContent='불러왔어요. 화면을 새로 그려요…';setTimeout(()=>location.reload(),600)}
+$('bkFile').addEventListener('change',()=>{const f=$('bkFile').files[0];if(!f)return;const r=new FileReader();r.onload=()=>stageBackup(r.result);r.readAsText(f)});
+$('bkPasteGo').addEventListener('click',()=>{const t=$('bkPaste').value.trim();if(!t){$('bkPaste').focus();return}stageBackup(t)});
+function applyBackup(b){try{const del=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(BK_KEYS(k))del.push(k)}del.forEach(k=>localStorage.removeItem(k));
+  Object.entries(b.months).forEach(([m,j])=>{if(/^\d{4}-\d{2}$/.test(m))localStorage.setItem(LKEY+m,typeof j==='string'?j:JSON.stringify(j))});
+  localStorage.setItem(IKEY,JSON.stringify(b.inst||[]));if(b.name)localStorage.setItem('gagyebu-name',b.name);
+  $('bkMsg').textContent='불러왔어요. 화면을 새로 그려요…';setTimeout(()=>location.reload(),600)}
   catch(e){$('bkMsg').textContent='불러오지 못했어요: '+String(e&&e.message||e)}}
 // 30일 넘게 백업 안 했으면 홈에 알림
 function drawBackupNag(){if(MODE!=='web')return;let last=0;try{last=Number(localStorage.getItem('gagyebu-lastbackup'))||0}catch(e){}
   let has=false;try{for(let i=0;i<localStorage.length;i++)if(localStorage.key(i).indexOf(LKEY)===0){has=true;break}}catch(e){}
   const b=$('banner');if(!has||Date.now()-last<30*DAY)return;
   b.hidden=false;b.textContent='';b.append(last?'마지막 백업 후 30일이 지났어요. ':'아직 백업 파일이 없어요. 기록은 이 폰에만 있어서 ');const a=document.createElement('button');a.type='button';a.className='linkbtn';a.textContent='지금 백업하기';a.addEventListener('click',()=>{openSettings();setTimeout(()=>$('bkSet').scrollIntoView(),50)});b.append(a)}
+// 구글 버전: '웹앱으로 옮기기'(저장·복사만) / 웹앱·미리보기: 백업 저장·불러오기·붙여넣기
+(function setupBk(){if(GAS){$('bkTitle').textContent='웹앱으로 옮기기 · 백업';
+  $('bkDesc').innerHTML='지금까지 적은 모든 달과 할부를 파일 하나로 저장해요. 블로그 웹앱(폰에만 저장하는 버전)으로 옮길 때, 웹앱의 ⚙ 설정 → <b>백업 불러오기</b>에서 이 파일을 고르면 그대로 옮겨져요. 이 구글 가계부의 기록은 지워지지 않아요.';
+  $('bkSave').textContent='옮기기 파일 저장';$('bkLoad').hidden=true;$('bkPasteBox').hidden=true;$('bkPasteGo').hidden=true;$('bkCopy').textContent='파일 저장이 안 되면: 옮길 내용 복사하기'}})();
 (async()=>{
   if(!GAS){
-    if(MODE!=='gas'){$('pinSet').hidden=true;$('bkSet').hidden=false}
+    if(MODE!=='gas'){$('pinSet').hidden=true}
     try{const nm=localStorage.getItem('gagyebu-name');if(nm){$('appname').textContent=nm;document.title=nm}}catch(e){}
     if(MODE==='web'&&navigator.storage&&navigator.storage.persist){try{navigator.storage.persist()}catch(e){}}
     await loadMonth();drawBackupNag();return}
