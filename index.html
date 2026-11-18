@@ -327,6 +327,9 @@ body[data-tab="home"] .wrap [data-tab]:not([data-tab="home"]),body[data-tab="day
 #bkSet .linkbtn{align-self:flex-start;font-size:13px}
 #bkPaste{width:100%;font:inherit;font-size:12px;color:var(--fg);background:var(--field);border:1px solid transparent;border-radius:8px;padding:8px;resize:vertical}
 #bkPaste:focus{border-color:var(--accent);outline:none;background:var(--surface)}
+#wlock{position:fixed;inset:0;z-index:30;background:var(--bg);display:flex;align-items:center;justify-content:center;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+#wlock .linkbtn{align-self:center;font-size:13px;color:var(--muted)}
+#wlock .lockbox p{line-height:1.5}
 @media (prefers-reduced-motion:reduce){.bar .fill{transition:none}}
 </style>
 
@@ -340,6 +343,18 @@ body[data-tab="home"] .wrap [data-tab]:not([data-tab="home"]),body[data-tab="day
     <input type="password" id="pinIn" inputmode="numeric" placeholder="비밀번호" autocomplete="off">
     <button type="button" id="pinBtn">열기</button>
     <p class="lockerr" id="lockErr"></p>
+  </div>
+</section>
+<section id="wlock" hidden aria-label="잠금">
+  <div class="lockbox">
+    <h2 id="wlTitle">잠금 해제</h2>
+    <p id="wlHelp"></p>
+    <input type="password" inputmode="numeric" id="wlPin" placeholder="비밀번호" autocomplete="off" aria-label="비밀번호">
+    <input type="password" inputmode="numeric" id="wlPin2" placeholder="비밀번호 한 번 더" autocomplete="off" aria-label="비밀번호 한 번 더" hidden>
+    <input type="text" id="wlWipe" placeholder="지우기" autocomplete="off" aria-label="확인 글자" hidden>
+    <button type="button" id="wlBtn">열기</button>
+    <p class="lockerr" id="wlErr"></p>
+    <button type="button" class="linkbtn" id="wlForgot">비밀번호를 잊었어요</button>
   </div>
 </section>
 <div class="wrap">
@@ -463,12 +478,13 @@ body[data-tab="home"] .wrap [data-tab]:not([data-tab="home"]),body[data-tab="day
       <div class="quick-msg" id="bkMsg" role="status"></div>
     </section>
     <section class="panel export" id="pinSet">
-      <h2>가족 비밀번호 바꾸기</h2>
+      <h2 id="pinTitle">가족 비밀번호 바꾸기</h2>
+      <p class="wk-hint" id="pinDesc" hidden></p>
       <div id="pinForm" class="pinform">
         <label>지금 비밀번호<input type="password" inputmode="numeric" id="pinOld" autocomplete="off"></label>
         <label>새 비밀번호 (4자리 이상)<input type="password" inputmode="numeric" id="pinNew1" autocomplete="off"></label>
         <label>새 비밀번호 한 번 더<input type="password" inputmode="numeric" id="pinNew2" autocomplete="off"></label>
-        <div class="pinbtns"><button type="button" id="pinSave" class="savebtn">바꾸기</button></div>
+        <div class="pinbtns"><button type="button" id="wlOff" class="linkbtn" hidden>잠금 끄기</button><button type="button" id="pinSave" class="savebtn">바꾸기</button></div>
       </div>
       <div class="quick-msg" id="pinMsg" role="status"></div>
     </section>
@@ -483,7 +499,7 @@ body[data-tab="home"] .wrap [data-tab]:not([data-tab="home"]),body[data-tab="day
       <p class="wk-hint">카테고리와 그래프를 한꺼번에 접거나 펴요. 이 폰에만 적용돼요.</p>
       <div class="namerow"><button type="button" id="svFold" class="exportbtn">모두 접기</button><button type="button" id="svOpen" class="exportbtn">모두 펴기</button></div>
     </section>
-    <p class="wk-hint" style="text-align:center">앱 버전 <b class="num">2026.11.18-2220</b></p>
+    <p class="wk-hint" style="text-align:center">앱 버전 <b class="num">2026.11.19-0652</b></p>
   </div>
 </section>
 
@@ -780,12 +796,14 @@ $('nameSet').addEventListener('keydown',e=>{if(e.key==='Enter')$('nameSave').cli
 // ---------- 가족 비밀번호 바꾸기 ----------
 $('pinSave').addEventListener('click',async()=>{
   const o=$('pinOld').value.trim(),a=$('pinNew1').value.trim(),b=$('pinNew2').value.trim(),msg=$('pinMsg');
-  if(!o||!a){msg.textContent='칸을 모두 채워 주세요.';return}
+  const wlOffNow=!GAS&&(()=>{const L=wlGet();return !L||L.on===false})();
+  if((!o&&!wlOffNow)||!a){msg.textContent='칸을 모두 채워 주세요.';return}
   if(a.length<4){msg.textContent='새 비밀번호는 4자리 이상으로 정해 주세요.';return}
   if(a!==b){msg.textContent='새 비밀번호 두 개가 서로 달라요.';$('pinNew2').focus();return}
-  if(a===o){msg.textContent='지금 비밀번호와 같아요.';return}
+  if(!wlOffNow&&a===o){msg.textContent='지금 비밀번호와 같아요.';return}
   $('pinSave').disabled=true;msg.textContent='바꾸는 중…';
   try{
+    if(!GAS){const L=wlGet();if(L&&L.on!==false){if(!(await wlCheck(o))){msg.textContent='지금 비밀번호가 맞지 않아요.';return}}await wlSet(a);['pinOld','pinNew1','pinNew2'].forEach(k=>$(k).value='');msg.textContent=wlOffNow?'잠금을 켰어요. 다음에 열 때부터 이 비밀번호를 넣어요.':'잠금 비밀번호를 바꿨어요. 다음에 열 때부터 새 비밀번호를 넣어요.';wlSetupSettings();return}
     if(GAS)await call('changePin',o,a);
     PIN=a;try{localStorage.setItem('gaegyebu-pin',a)}catch(e){}
     ['pinOld','pinNew1','pinNew2'].forEach(k=>$(k).value='');msg.textContent='비밀번호를 바꿨어요. 가족 폰에서는 다음에 열 때 새 비밀번호를 넣어야 해요. 가족에게 꼭 알려 주세요.';
@@ -1388,6 +1406,44 @@ window.addEventListener('pagehide',()=>{if(dirty)save();if(instDirty)saveInst()}
 function fitScale(){const w=window.innerWidth||document.documentElement.clientWidth;const z=w>=680?Math.min(1.7,w/600):1;document.body.style.zoom=z===1?'':String(Math.round(z*100)/100)}
 window.addEventListener('resize',fitScale);fitScale();
 render();
+// ---------- 이 폰 잠금 (웹앱·미리보기): 처음 열 때 비밀번호를 정하고, 열 때마다·3분 넘게 나갔다 오면 잠금 ----------
+// 화면 잠금이에요(기록 자체를 암호로 바꾸지는 않음). 비밀번호는 그대로 저장하지 않고 해시만 저장.
+const WL_KEY='gagyebu-lock';
+function wlGet(){try{return JSON.parse(localStorage.getItem(WL_KEY)||'null')}catch(e){return null}}
+async function wlHash(pin,salt){try{if(crypto&&crypto.subtle){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(salt+':'+pin));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}}catch(e){}
+  let h=5381;for(const ch of salt+':'+pin)h=((h*33)^ch.charCodeAt(0))>>>0;return 'd'+h}
+async function wlSet(pin){const salt=Math.random().toString(36).slice(2,10);localStorage.setItem(WL_KEY,JSON.stringify({on:true,salt,hash:await wlHash(pin,salt)}))}
+async function wlCheck(pin){const L=wlGet();return !!L&&L.hash===await wlHash(pin,L.salt)}
+let wlMode='open',wlResolve=null,wlHiddenAt=0;
+function wlShow(mode){wlMode=mode;const T={set:['잠금 비밀번호 정하기','가계부를 열 때 쓸 비밀번호를 정해요. 숫자 4자리 이상. 잊으면 이 폰의 기록을 되살릴 수 없으니 꼭 기억해 두세요.','이 번호로 정하기'],
+  open:['잠금 해제','비밀번호를 넣어 주세요.','열기'],
+  forgot:['비밀번호를 잊었어요','비밀번호는 이 폰에만 있어서 찾아 드릴 수 없어요. 아래 칸에 "지우기"라고 쓰면 이 폰의 가계부 기록을 모두 지우고 새로 시작해요. 백업 파일이 있다면 새로 시작한 뒤 ⚙ 설정 → 백업 불러오기로 되살릴 수 있어요.','기록 지우고 새로 시작']}[mode];
+  $('wlTitle').textContent=T[0];$('wlHelp').textContent=T[1];$('wlBtn').textContent=T[2];$('wlErr').textContent='';
+  $('wlPin').hidden=mode==='forgot';$('wlPin2').hidden=mode!=='set';$('wlWipe').hidden=mode!=='forgot';$('wlForgot').hidden=mode==='set';
+  $('wlForgot').textContent=mode==='forgot'?'← 비밀번호 넣기로 돌아가기':'비밀번호를 잊었어요';['wlPin','wlPin2','wlWipe'].forEach(k=>$(k).value='');
+  $('wlock').hidden=false;document.body.style.overflow='hidden';setTimeout(()=>($(mode==='forgot'?'wlWipe':'wlPin')).focus(),60)}
+function wlDone(){$('wlock').hidden=true;document.body.style.overflow='';if(wlResolve){const r=wlResolve;wlResolve=null;r()}}
+async function wlSubmit(){const err=$('wlErr');
+  if(wlMode==='set'){const a=$('wlPin').value.trim(),b=$('wlPin2').value.trim();if(a.length<4){err.textContent='4자리 이상으로 정해 주세요.';return}if(a!==b){err.textContent='두 번 넣은 비밀번호가 서로 달라요.';$('wlPin2').focus();return}await wlSet(a);wlDone();return}
+  if(wlMode==='open'){if(await wlCheck($('wlPin').value.trim()))wlDone();else{err.textContent='비밀번호가 맞지 않아요.';$('wlPin').value='';$('wlPin').focus()}return}
+  if(wlMode==='forgot'){if($('wlWipe').value.trim()!=='지우기'){err.textContent='"지우기"라고 써 주세요.';return}
+    const del=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.indexOf('gagyebu')===0||k.indexOf('gaegyebu')===0)del.push(k)}del.forEach(k=>localStorage.removeItem(k));location.reload()}}
+$('wlBtn').addEventListener('click',wlSubmit);
+['wlPin','wlPin2','wlWipe'].forEach(k=>$(k).addEventListener('keydown',e=>{if(e.key==='Enter')wlSubmit()}));
+$('wlForgot').addEventListener('click',()=>wlShow(wlMode==='forgot'?'open':'forgot'));
+function wlGate(){if(MODE==='gas')return Promise.resolve();const L=wlGet();if(L&&L.on===false)return Promise.resolve();
+  return new Promise(res=>{wlResolve=res;wlShow(L?'open':'set')})}
+document.addEventListener('visibilitychange',()=>{if(MODE==='gas')return;const L=wlGet();if(!L||L.on===false)return;
+  if(document.visibilityState==='hidden')wlHiddenAt=Date.now();else if(wlHiddenAt&&Date.now()-wlHiddenAt>3*60*1000&&$('wlock').hidden)wlShow('open')});
+// 설정 화면의 '이 폰 잠금' 칸
+function wlSetupSettings(){if(MODE==='gas')return;const L=wlGet(),on=!!L&&L.on!==false;
+  $('pinSet').hidden=false;$('pinTitle').textContent='이 폰 잠금';$('pinDesc').hidden=false;
+  $('pinDesc').textContent=on?'잠금이 켜져 있어요. 앱을 열 때와 3분 넘게 다른 앱에 갔다 올 때 비밀번호를 물어요. 화면 잠금이라, 폰 잠금(지문·패턴)도 함께 쓰면 더 안전해요.':'잠금이 꺼져 있어요. 아래에 새 비밀번호를 두 번 넣고 [잠금 켜기]를 누르면 다시 켜져요.';
+  $('pinOld').closest('label').hidden=!on;$('pinSave').textContent=on?'바꾸기':'잠금 켜기';$('wlOff').hidden=!on}
+$('wlOff').addEventListener('click',async()=>{const msg=$('pinMsg');const o=$('pinOld').value.trim();if(!o){msg.textContent='잠금을 끄려면 "지금 비밀번호" 칸에 비밀번호를 넣고 다시 누르세요.';$('pinOld').focus();return}
+  if(!(await wlCheck(o))){msg.textContent='지금 비밀번호가 맞지 않아요.';return}
+  const L=wlGet();L.on=false;localStorage.setItem(WL_KEY,JSON.stringify(L));$('pinOld').value='';msg.textContent='잠금을 껐어요. 이제 비밀번호 없이 열려요.';wlSetupSettings()});
+
 // ---------- 백업 (폰에만 저장하는 버전) ----------
 const BK_KEYS=k=>k.indexOf(LKEY)===0||k===IKEY||k==='gagyebu-name';
 function saveBlob(name,blob){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)}
@@ -1448,7 +1504,8 @@ function drawBackupNag(){if(MODE!=='web')return;let last=0;try{last=Number(local
   $('bkSave').textContent='옮기기 파일 저장';$('bkLoad').hidden=true;$('bkPasteBox').hidden=true;$('bkPasteGo').hidden=true;$('bkCopy').textContent='파일 저장이 안 되면: 옮길 내용 복사하기'}})();
 (async()=>{
   if(!GAS){
-    if(MODE!=='gas'){$('pinSet').hidden=true}
+    wlSetupSettings();
+    await wlGate();
     try{const nm=localStorage.getItem('gagyebu-name');if(nm){$('appname').textContent=nm;document.title=nm}}catch(e){}
     if(MODE==='web'&&navigator.storage&&navigator.storage.persist){try{navigator.storage.persist()}catch(e){}}
     await loadMonth();drawBackupNag();return}
