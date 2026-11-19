@@ -525,14 +525,18 @@ body[data-tab="home"] .wrap [data-tab]:not([data-tab="home"]),body[data-tab="day
     </section>
     <section class="panel export">
       <h2>한 주 시작 요일</h2>
-      <p class="wk-hint">한 주 예산·하루 예산·달력·주차가 이 요일부터 시작해요. 그 달 1일이 들어 있는 주가 1주차예요.<span id="wsNote"></span></p>
+      <p class="wk-hint">한 주 예산·하루 예산·달력·주차가 이 요일부터 시작해요. <span id="wsNote"></span></p>
       <div class="namerow"><button type="button" class="exportbtn" id="ws0">일요일부터</button><button type="button" class="exportbtn" id="ws1">월요일부터</button></div>
+      <h2 style="margin-top:18px">1주차 기준</h2>
+      <p class="wk-hint">어느 주를 그 달 1주차로 셀지 골라요. 이미 적은 내역도 새 기준에 맞는 달·주차로 옮겨져요.</p>
+      <div class="namerow"><button type="button" class="exportbtn" id="wr0">1일이 들어 있는 주</button><button type="button" class="exportbtn" id="wr1">첫 시작 요일부터</button></div>
+      <p class="wk-hint" id="wrEx"></p>
       <div class="quick-msg" id="wsMsg" role="status"></div>
       <h2 style="margin-top:12px">화면</h2>
       <p class="wk-hint">카테고리와 그래프를 한꺼번에 접거나 펴요. 이 폰에만 적용돼요.</p>
       <div class="namerow"><button type="button" id="svFold" class="exportbtn">모두 접기</button><button type="button" id="svOpen" class="exportbtn">모두 펴기</button></div>
     </section>
-    <p class="wk-hint" style="text-align:center">앱 버전 <b class="num">2026.11.19-1129</b></p>
+    <p class="wk-hint" style="text-align:center">앱 버전 <b class="num">2026.11.19-1154</b></p>
   </div>
 </section>
 
@@ -573,8 +577,9 @@ const clone=o=>JSON.parse(JSON.stringify(o));
 const pad=n=>String(n).padStart(2,'0');
 
 let WSTART=0;try{WSTART=localStorage.getItem('gagyebu-wstart')==='1'?1:0}catch(e){} // 한 주 시작: 0=일요일, 1=월요일
+let WRULE=0;try{WRULE=localStorage.getItem('gagyebu-wrule')==='1'?1:0}catch(e){} // 1주차: 0=1일이 들어 있는 주, 1=그 달 첫 시작 요일부터
 let now=new Date(); let ym=now.getFullYear()+'-'+pad(now.getMonth()+1);
-{const t=ym+'-'+pad(now.getDate());const nx=(()=>{let [y,m]=ym.split('-').map(Number);m++;if(m>12){m=1;y++}return y+'-'+String(m).padStart(2,'0')})();const sf=(s)=>{const [y,m]=s.split('-').map(Number);const f=new Date(y,m-1,1);return new Date(y,m-1,1-((f.getDay()-WSTART+7)%7))};if(new Date(now.getFullYear(),now.getMonth(),now.getDate())>=sf(nx))ym=nx;} // 11/29처럼 다음 달 1주차에 들어가는 날은 다음 달로 연다
+ym=ledgerYm(ym+'-'+pad(now.getDate())); // 오늘이 속한 가계부 달로 연다 (예: 다음 달 1주차, 또는 지난달 5주차)
 let state=clone(DEFAULT), exists=false, saveTimer=null, saving=false, dirty=false;
 
 function normalize(d){
@@ -806,17 +811,43 @@ $('appname').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.p
 
 // ---------- 설정 화면 (맨 위 ⚙) ----------
 let svScroll=0;
-function wsDraw(){$('ws0').setAttribute('aria-pressed',String(WSTART===0));$('ws1').setAttribute('aria-pressed',String(WSTART===1));$('wsNote').textContent=GAS?' 가족 모두 같은 기준으로 바뀌어요.':''}
+function wsDraw(){$('ws0').setAttribute('aria-pressed',String(WSTART===0));$('ws1').setAttribute('aria-pressed',String(WSTART===1));$('wr0').setAttribute('aria-pressed',String(WRULE===0));$('wr1').setAttribute('aria-pressed',String(WRULE===1));{const n=weeksIn(ym),[a]=weekDates(0,ym),[,b]=weekDates(n-1,ym),[y,m]=ym.split('-').map(Number);$('wrEx').textContent='지금 기준으로 '+m+'월은 '+md(a)+'('+WD[a.getDay()]+') ~ '+md(b)+'('+WD[b.getDay()]+'), '+n+'주예요.'+(WRULE?' 그 달 첫 '+WD[WSTART]+'요일부터 1주차예요.':' '+m+'월 1일이 들어 있는 주가 1주차예요.')};$('wsNote').textContent=GAS?' 가족 모두 같은 기준으로 바뀌어요.':''}
 // 이번 달 주차 칸이 모두 날짜 있는 내역에서 온 숫자면, 새 기준으로 다시 나눈다
 function rebucket(){WKEYS.forEach(k=>{const L=state.logs.filter(l=>l.k===k);const sumW=state.weekly[k].reduce((a,b)=>a+b,0),sumL=L.reduce((a,l)=>a+l.a,0);if(sumW!==sumL)return;const arr=Array(WEEKS).fill(0);L.forEach(l=>{arr[weekIdx(l.d)]+=l.a});state.weekly[k]=arr})}
-async function setWStart(v){if(v===WSTART)return;WSTART=v;try{localStorage.setItem('gagyebu-wstart',String(v))}catch(e){}
-  rebucket();changed();dWeek=null;dSel=null;$('dWeekGrid').dataset.key='';render();wsDraw();
+// 기준(시작 요일·1주차)이 바뀌면 모든 달의 내역·하루 예산을 새 기준의 달로 옮기고 주차 칸을 다시 나눈다 (웹앱)
+function migrateWeeks(oldWs,oldWr){
+  const keys=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.indexOf(LKEY)===0&&/^\d{4}-\d{2}$/.test(k.slice(LKEY.length)))keys.push(k.slice(LKEY.length))}
+  const newWs=WSTART,newWr=WRULE,docs={},manual={},logs=[],days=[];
+  WSTART=oldWs;WRULE=oldWr;
+  keys.forEach(m=>{let d;try{d=normalize(JSON.parse(localStorage.getItem(LKEY+m)))}catch(e){return}docs[m]=d;
+    manual[m]={};WKEYS.forEach(k=>{const b=Array(WEEKS).fill(0);d.logs.forEach(l=>{if(l.k===k)b[weekIdx(l.d)]+=l.a});manual[m][k]=d.weekly[k].map((v,i)=>Math.max(0,v-b[i]))});
+    d.logs.forEach(l=>logs.push([l,(d.cats||[]).find(c=>c.k===l.k)]));Object.keys(d.dayb||{}).forEach(ds=>days.push([ds,d.dayb[ds]]));d.logs=[];d.dayb={}});
+  WSTART=newWs;WRULE=newWr;
+  const get=m=>{if(!docs[m]){const d=normalize(clone(DEFAULT));docs[m]=d;manual[m]={};WKEYS.forEach(k=>manual[m][k]=Array(WEEKS).fill(0))}return docs[m]};
+  logs.forEach(([l,cat])=>{const d=get(ledgerYm(l.d));d.logs.push(l);if(cat&&!(d.cats||[]).some(c=>c.k===cat.k)){d.cats=d.cats||[];d.cats.push(cat)}});
+  days.forEach(([ds,v])=>{get(ledgerYm(ds)).dayb[ds]=v});
+  Object.keys(docs).forEach(m=>{const d=docs[m];d.logs.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0);
+    WKEYS.forEach(k=>{const b=Array(WEEKS).fill(0);d.logs.forEach(l=>{if(l.k===k)b[weekIdx(l.d)]+=l.a});d.weekly[k]=b.map((v,i)=>v+manual[m][k][i])});
+    if(keys.indexOf(m)<0&&!d.logs.length&&!Object.keys(d.dayb).length)return;
+    d.updatedAt=new Date().toISOString();localStorage.setItem(LKEY+m,JSON.stringify(d))});
+}
+async function applyWeekRule(ws,wr){if(ws===WSTART&&wr===WRULE)return;
+  clearTimeout(saveTimer);if(dirty||saving){await save()}
+  const oldWs=WSTART,oldWr=WRULE,today=dStr(new Date()),wasToday=ym===ledgerYm(today);
+  WSTART=ws;WRULE=wr;try{localStorage.setItem('gagyebu-wstart',String(ws));localStorage.setItem('gagyebu-wrule',String(wr))}catch(e){}
+  if(GAS){rebucket();changed()}else{try{migrateWeeks(oldWs,oldWr)}catch(e){console.error(e)}if(wasToday)ym=ledgerYm(today)}
+  dWeek=null;dSel=null;$('dWeekGrid').dataset.key='';
+  if(GAS)render();else await loadMonth();
+  wsDraw();}
+async function setWRule(v){if(v===WRULE)return;await applyWeekRule(WSTART,v);
+  $('wsMsg').textContent=(v?'그 달 첫 '+WD[WSTART]+'요일부터':'1일이 들어 있는 주를')+' 1주차로 바꿨어요. 적어 둔 내역도 새 주차로 옮겼어요.'}
+async function setWStart(v){if(v===WSTART)return;await applyWeekRule(v,WRULE);
   $('wsMsg').textContent=(v?'월요일':'일요일')+'부터 시작하게 바꿨어요.'+(GAS?' 가족 폰에도 다음에 열 때 적용돼요.':'');
   if(GAS){try{await call('setWeekStart',PIN,v)}catch(e){$('wsMsg').textContent='이 폰에는 바꿨지만 가족과 같이 쓰는 설정은 저장하지 못했어요. 다시 눌러 주세요.'}}}
 function openSettings(focusId){wsDraw();svScroll=scrollY;drawCatSet();$('catMsg').textContent='';$('catNew').value='';$('nameSet').value=$('appname').textContent;['nameMsg','pinMsg','exportMsg'].forEach(k=>$(k).textContent='');['pinOld','pinNew1','pinNew2'].forEach(k=>$(k).value='');$('settingsView').hidden=false;$('settingsView').scrollTop=0;document.body.style.overflow='hidden';if(typeof focusId==='string'&&$(focusId)){$('catSet').scrollIntoView();setTimeout(()=>$(focusId).focus(),50)}else $('svBack').focus()}
 function closeSettings(){$('settingsView').hidden=true;document.body.style.overflow='';scrollTo(0,svScroll)}
 $('gear').addEventListener('click',()=>openSettings());
-$('ws0').addEventListener('click',()=>setWStart(0));$('ws1').addEventListener('click',()=>setWStart(1));
+$('ws0').addEventListener('click',()=>setWStart(0));$('ws1').addEventListener('click',()=>setWStart(1));$('wr0').addEventListener('click',()=>setWRule(0));$('wr1').addEventListener('click',()=>setWRule(1));
 $('catAdd').addEventListener('click',()=>{if(addCat($('catNew').value))$('catNew').value=''});
 $('catNew').addEventListener('keydown',e=>{if(e.key==='Enter')$('catAdd').click()});
 $('svBack').addEventListener('click',closeSettings);
@@ -921,10 +952,10 @@ function daysIn(s){const [y,m]=s.split('-').map(Number);return new Date(y,m,0).g
 const DAY=86400000;
 function dOf(str){const [y,m,d]=str.split('-').map(Number);return new Date(y,m-1,d)}
 function dStr(dt){return dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate())}
-function startOf(s){const [y,m]=s.split('-').map(Number);const f=new Date(y,m-1,1);return new Date(y,m-1,1-((f.getDay()-WSTART+7)%7))}
+function startOf(s){const [y,m]=s.split('-').map(Number);const f=new Date(y,m-1,1);return WRULE?new Date(y,m-1,1+((WSTART-f.getDay()+7)%7)):new Date(y,m-1,1-((f.getDay()-WSTART+7)%7))}
 const WD=['일','월','화','수','목','금','토'];
 function weeksIn(s){return Math.round((startOf(nextYm(s))-startOf(s))/DAY/7)}
-function ledgerYm(str){const own=str.slice(0,7),nx=nextYm(own);return dOf(str)>=startOf(nx)?nx:own}
+function ledgerYm(str){const own=str.slice(0,7),nx=nextYm(own),d=dOf(str);if(d>=startOf(nx))return nx;if(d<startOf(own))return prevYm(own);return own}
 function weekIdx(str){return Math.max(0,Math.min(WEEKS-1,Math.floor((dOf(str)-startOf(ledgerYm(str)))/DAY/7)))}
 function weekDates(i,s){s=s||ym;const a=new Date(startOf(s).getTime()+i*7*DAY);const b=new Date(a.getTime()+6*DAY);return [a,b]}
 function md(dt){return (dt.getMonth()+1)+'/'+dt.getDate()}
@@ -1538,11 +1569,11 @@ async function collectBackup(){
   if(GAS){const r=await call('exportData',PIN);(r.months||[]).forEach(([ym2,j])=>{months[ym2]=j});instList=r.inst||[];name=r.name||name}
   else{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.indexOf(LKEY)===0)months[k.slice(LKEY.length)]=localStorage.getItem(k)}
     try{instList=JSON.parse(localStorage.getItem(IKEY)||'[]')}catch(e){instList=[]}}
-  return {app:'gagyebu',v:2,at:new Date().toISOString(),name,months,inst:instList};
+  return {app:'gagyebu',v:2,at:new Date().toISOString(),name,months,inst:instList,wstart:WSTART,wrule:WRULE};
 }
 function readBackup(j){ // v1(웹앱 첫 버전)과 v2 모두 읽기 → {name, months, inst}
   if(!j||j.app!=='gagyebu')throw 0;
-  if(j.v===2)return {name:j.name||'',months:j.months||{},inst:Array.isArray(j.inst)?j.inst:[]};
+  if(j.v===2)return {name:j.name||'',months:j.months||{},inst:Array.isArray(j.inst)?j.inst:[],wstart:j.wstart,wrule:j.wrule};
   const m={};let inst=[],name='';Object.entries(j.data||{}).forEach(([k,v])=>{const mm=k.match(/(\d{4}-\d{2})$/);if(/-m-|demo-/.test(k)&&mm)m[mm[1]]=v;else if(/inst/.test(k)){try{inst=JSON.parse(v)}catch(e){}}else if(/name/.test(k))name=v});
   return {name,months:m,inst};
 }
@@ -1574,7 +1605,7 @@ $('bkFile').addEventListener('change',()=>{const f=$('bkFile').files[0];if(!f)re
 $('bkPasteGo').addEventListener('click',()=>{const t=$('bkPaste').value.trim();if(!t){$('bkPaste').focus();return}stageBackup(t)});
 function applyBackup(b){try{const del=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(BK_KEYS(k))del.push(k)}del.forEach(k=>localStorage.removeItem(k));
   Object.entries(b.months).forEach(([m,j])=>{if(/^\d{4}-\d{2}$/.test(m))localStorage.setItem(LKEY+m,typeof j==='string'?j:JSON.stringify(j))});
-  localStorage.setItem(IKEY,JSON.stringify(b.inst||[]));if(b.name)localStorage.setItem('gagyebu-name',b.name);
+  localStorage.setItem(IKEY,JSON.stringify(b.inst||[]));if(b.name)localStorage.setItem('gagyebu-name',b.name);if(b.wstart===0||b.wstart===1)localStorage.setItem('gagyebu-wstart',String(b.wstart));if(b.wrule===0||b.wrule===1)localStorage.setItem('gagyebu-wrule',String(b.wrule));
   $('bkMsg').textContent='불러왔어요. 화면을 새로 그려요…';setTimeout(()=>location.reload(),600)}
   catch(e){$('bkMsg').textContent='불러오지 못했어요: '+String(e&&e.message||e)}}
 // 30일 넘게 백업 안 했으면 홈에 알림
