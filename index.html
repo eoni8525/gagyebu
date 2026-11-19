@@ -330,6 +330,14 @@ body[data-tab="home"] .wrap [data-tab]:not([data-tab="home"]),body[data-tab="day
 #wlock{position:fixed;inset:0;z-index:30;background:var(--bg);display:flex;align-items:center;justify-content:center;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 #wlock .linkbtn{align-self:center;font-size:13px;color:var(--muted)}
 #wlock .lockbox p{line-height:1.5}
+.day-own{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;margin-top:10px;font-size:14px;font-weight:500}
+.day-own input,.dweek input{min-width:0;width:100%;font:inherit;color:var(--fg);background:var(--field);border:1px solid transparent;border-radius:8px;padding:8px 10px;text-align:right;font-variant-numeric:tabular-nums}
+.day-own input:focus,.dweek input:focus{border-color:var(--accent);outline:none;background:var(--surface)}
+.day-own input::placeholder,.dweek input::placeholder{color:var(--muted);font-size:13px}
+.dweek{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px 10px}
+.dweek label{display:grid;grid-template-columns:3.4em 1fr;align-items:center;gap:6px;font-size:13.5px;font-weight:500}
+.dweek label small{display:block;font-size:11px;color:var(--muted);font-weight:400}
+.dweek label.sun span{color:var(--bad)} .dweek label.sat span{color:#5f86c9}
 @media (prefers-reduced-motion:reduce){.bar .fill{transition:none}}
 </style>
 
@@ -404,13 +412,17 @@ body[data-tab="home"] .wrap [data-tab]:not([data-tab="home"]),body[data-tab="day
     <div class="day-nav"><button type="button" id="dPrev" aria-label="지난주">‹</button><h2 id="dTitle">하루 예산</h2><button type="button" id="dNext" aria-label="다음 주">›</button></div>
     <div class="day-strip" id="dStrip"></div>
     <div class="day-main" id="dMain"></div>
+    <div class="day-own"><label for="dDayIn" id="dDayLabel">이 날 예산</label><input type="text" inputmode="numeric" id="dDayIn"><button type="button" class="linkbtn" id="dDayClr">기본으로</button></div>
     <div class="day-list" id="dList"></div>
     <button type="button" class="exportbtn" id="dWrite">이 날 쓴 돈 적기</button>
   </section>
   <section class="panel daypanel" data-tab="day">
-    <h2>하루 예산 정하기</h2>
-    <div class="namerow"><input type="text" inputmode="numeric" id="dBudgetIn" aria-label="하루 예산"><span class="wk-hint" id="dBudgetHint"></span></div>
-    <p class="wk-hint">식비+생활비 기준이에요. 비워 두면 그 주 예산 ÷ 7로 계산해요. 쓰고 남은 돈은 그 주 안에서 다음 날로 넘어가요(아낀 돈 이월). 날짜와 함께 적은 내역만 계산돼요.</p>
+    <h2>날짜별 예산</h2>
+    <p class="wk-hint">날마다 예산이 다르면 여기서 한 번에 적어요. 비워 둔 날은 아래 '기본 하루 예산'으로 계산해요.</p>
+    <div class="dweek" id="dWeekGrid"></div>
+    <h2 style="margin-top:14px">기본 하루 예산</h2>
+    <div class="namerow"><input type="text" inputmode="numeric" id="dBudgetIn" aria-label="기본 하루 예산"><span class="wk-hint" id="dBudgetHint"></span></div>
+    <p class="wk-hint">날짜별로 안 적은 날에 쓰는 예산이에요. 이것도 비워 두면 그 주 예산 ÷ 7로 계산해요. 식비+생활비 기준, 쓰고 남은 돈은 그 주 안에서 다음 날로 넘어가요(아낀 돈 이월). 날짜와 함께 적은 내역만 계산돼요.</p>
   </section>
 
   <section class="panel cal" data-fold="p-cal" data-tab="cal">
@@ -499,7 +511,7 @@ body[data-tab="home"] .wrap [data-tab]:not([data-tab="home"]),body[data-tab="day
       <p class="wk-hint">카테고리와 그래프를 한꺼번에 접거나 펴요. 이 폰에만 적용돼요.</p>
       <div class="namerow"><button type="button" id="svFold" class="exportbtn">모두 접기</button><button type="button" id="svOpen" class="exportbtn">모두 펴기</button></div>
     </section>
-    <p class="wk-hint" style="text-align:center">앱 버전 <b class="num">2026.11.19-0652</b></p>
+    <p class="wk-hint" style="text-align:center">앱 버전 <b class="num">2026.11.19-0902</b></p>
   </div>
 </section>
 
@@ -529,7 +541,7 @@ const DEFAULT={
   income:['남편 월급','내 월급','남편 부수입','내 부수입'].map(n=>({n,a:0})),
   sIncome:[], special:[], oil:[], kid1:[], kid2:[],
   fixed:['집 대출금','관리비','가스비','보험료','통신비','인터넷·OTT','기부금','남편 용돈','내 용돈'].map(n=>({n,a:0})),
-  budget:0, ebudget:0, dbudget:0, wb:[0,0,0,0,0], logs:[], cats:[],
+  budget:0, ebudget:0, dbudget:0, dayb:{}, wb:[0,0,0,0,0], logs:[], cats:[],
   weekly:{food:Array(WEEKS).fill(0),living:Array(WEEKS).fill(0),emer:Array(WEEKS).fill(0)}
 };
 const $=id=>document.getElementById(id);
@@ -548,6 +560,7 @@ function normalize(d){
   SECTIONS.forEach(x=>{if(!Array.isArray(s[x.key]))s[x.key]=[]});
   s.weekly=s.weekly||{}; ['food','living','emer'].forEach(k=>{const a=Array.isArray(s.weekly[k])?s.weekly[k]:[];s.weekly[k]=Array.from({length:WEEKS},(_,i)=>Number(a[i])||0)});
   s.budget=Number(s.budget)||0; s.ebudget=Number(s.ebudget)||0; s.dbudget=Number(s.dbudget)||0;
+  {const o={};Object.entries(s.dayb&&typeof s.dayb==='object'?s.dayb:{}).forEach(([k,v])=>{if(/^\d{4}-\d{2}-\d{2}$/.test(k)&&Number(v)>0)o[k]=Number(v)});s.dayb=o}
   s.wb=Array.from({length:WEEKS},(_,i)=>Number((s.wb||[])[i])||0);
   s.logs=(Array.isArray(s.logs)?s.logs:[]).filter(l=>l&&Number(l.a)).map(l=>({id:String(l.id||''),d:String(l.d||''),k:WK[l.k]||isCust(l.k)?l.k:'food',a:Number(l.a)||0,m:String(l.m||''),cn:String(l.cn||'')})).map(l=>{if(!isCust(l.k))delete l.cn;return l});
   s.cats=(Array.isArray(s.cats)?s.cats:[]).filter(c=>c&&isCust(c.k)&&c.n).map(c=>({k:String(c.k),n:String(c.n).slice(0,12)}));
@@ -929,7 +942,8 @@ function updateWeek(){
 }
 // ---------- 하루 예산 (현생 가계부 방식): 하루 예산 = 직접 정한 값 또는 그 주 예산÷7, 남은 돈은 그 주 안에서 다음 날로 이월 ----------
 let dWeek=null,dSel=null;
-function dayBudget(wi){return state.dbudget||Math.floor((budgetFor(wi)||0)/7/10)*10}
+function dayBudget(wi){return state.dbudget||Math.floor((budgetFor(wi)||0)/7/10)*10} // 기본 하루 예산
+function dayB(ds,wi){return (state.dayb||{})[ds]||dayBudget(wi)} // 그 날 예산: 날짜별로 적은 값 > 기본
 function daySpent(ds){return state.logs.filter(l=>l.d===ds&&(l.k==='food'||l.k==='living')).reduce((a,l)=>a+l.a,0)}
 function drawDay(){
   const strip=$('dStrip');if(!strip)return;
@@ -940,31 +954,30 @@ function drawDay(){
   if(!dSel||!days.includes(dSel))dSel=days.includes(tStr)?tStr:days[0];
   $('dTitle').textContent=Number(ym.slice(5))+'월 '+(dWeek+1)+'주 · '+md(dOf(days[0]))+'~'+md(dOf(days[6]));
   $('dPrev').disabled=dWeek<=0;$('dNext').disabled=dWeek>=nW-1;
-  const B=dayBudget(dWeek);
-  // 날마다: 예산+이월, 쓴 돈, 남은 돈
+  // 날마다: 그 날 예산+이월, 쓴 돈, 남은 돈
   let carry=0;const info={};
-  days.forEach(ds=>{const sp=daySpent(ds);const avail=B+carry;info[ds]={carry,avail,sp,left:avail-sp};if(ds<=tStr)carry=avail-sp});
+  days.forEach(ds=>{const b0=dayB(ds,dWeek),sp=daySpent(ds);const avail=b0+carry;info[ds]={b:b0,own:!!(state.dayb||{})[ds],carry,avail,sp,left:avail-sp};if(ds<=tStr)carry=avail-sp});
   strip.textContent='';
   days.forEach((ds,i)=>{const f=info[ds];const b=document.createElement('button');b.type='button';
     b.className=(ds===dSel?'sel ':'')+(ds===tStr?'today ':'')+(ds>tStr?'future':'');
     const w=document.createElement('span');w.className='w';w.textContent=W[i];
     const n=document.createElement('span');n.className='n';n.textContent=dOf(ds).getDate();
-    const r=document.createElement('span');r.className='r num '+(!B||ds>tStr?'nil':f.left>=0?'ok':'over');
-    r.textContent=!B?(f.sp?short(f.sp):'-'):ds>tStr?short(B):(f.left>=0?'+':'-')+short(Math.abs(f.left));
+    const r=document.createElement('span');r.className='r num '+(!f.b||ds>tStr?'nil':f.left>=0?'ok':'over');
+    r.textContent=!f.b?(f.sp?short(f.sp):'-'):ds>tStr?short(f.b):(f.left>=0?'+':'-')+short(Math.abs(f.left));
     b.append(w,n,r);b.addEventListener('click',()=>{dSel=ds;drawDay()});strip.append(b)});
   // 고른 날
   const f=info[dSel],main=$('dMain');main.textContent='';
-  const dd=dOf(dSel);const label=(dSel===tStr?'오늘':md(dd)+' ('+W[dd.getDay()]+')');
-  if(!B){const h=document.createElement('div');h.className='wk-hint';h.textContent=label+' 쓴 돈 '+won(f.sp)+' · 아래에서 하루 예산을 정하거나 한 주 예산을 정해 주세요.';main.append(h)}
+  const dd=dOf(dSel);const label=(dSel===tStr?'오늘':md(dd)+' ('+W[dd.getDay()]+')');const B=f.b;
+  if(!B){const h=document.createElement('div');h.className='wk-hint';h.textContent=label+' 쓴 돈 '+won(f.sp)+' · 아래 "이 날 예산"이나 기본 하루 예산을 적어 주세요.';main.append(h)}
   else{
     const big=document.createElement('div');big.className='day-big '+(f.left>=0?'ok':'over');
-    big.textContent=dSel>tStr?label+' 하루 예산 '+won(B):label+(f.left>=0?' '+won(f.left)+' 남았어요':' '+won(-f.left)+' 넘었어요');
+    big.textContent=dSel>tStr?label+' 예산 '+won(B):label+(f.left>=0?' '+won(f.left)+' 남았어요':' '+won(-f.left)+' 넘었어요');
     main.append(big);
     const r1=document.createElement('div');r1.className='day-row';const a=document.createElement('span');a.append('쓴 돈 ');const ab=document.createElement('b');ab.textContent=won(f.sp);a.append(ab);
     const c=document.createElement('span');c.append('쓸 수 있던 돈 ');const cb=document.createElement('b');cb.textContent=won(f.avail);c.append(cb);r1.append(a,c);main.append(r1);
     const mt=document.createElement('div');mt.className='meter';const fi=document.createElement('i');const rr=f.avail>0?Math.min(1,f.sp/f.avail):(f.sp?1:0);fi.style.width=(rr*100)+'%';fi.className=f.sp>f.avail?'over':rr>=.8?'warn':'';mt.append(fi);main.append(mt);
     const cr=document.createElement('div');cr.className='day-carry'+(f.carry<0?' neg':'');
-    cr.textContent='하루 예산 '+won(B)+(f.carry?(f.carry>0?' + 그 전날까지 아낀 돈 '+won(f.carry):' − 그 전날까지 넘은 돈 '+won(-f.carry)):'');main.append(cr);
+    cr.textContent=(f.own?'이 날 예산 ':'기본 하루 예산 ')+won(B)+(f.carry?(f.carry>0?' + 그 전날까지 아낀 돈 '+won(f.carry):' − 그 전날까지 넘은 돈 '+won(-f.carry)):'');main.append(cr);
     if(dWeek===tw){const lastDay=days[6];const rest=Math.round((dOf(lastDay)-dOf(tStr))/DAY);const endLeft=info[tStr]?info[tStr].left:0;
       if(rest>0){const h=document.createElement('div');h.className='wk-hint';h.textContent='토요일까지 '+rest+'일 남았어요. 오늘까지 '+(endLeft>=0?'아낀 돈 '+won(endLeft)+'은 내일로 넘어가요.':'넘은 '+won(-endLeft)+'은 내일 예산에서 빠져요.');main.append(h)}}
   }
@@ -974,13 +987,27 @@ function drawDay(){
   if(!L.length){const e=document.createElement('div');e.className='wk-hint';e.textContent='이 날 적은 내역이 없어요.';list.append(e)}
   L.forEach(l=>{const r=document.createElement('div');r.className='r';const tg=document.createElement('span');tg.className='tg';tg.textContent=kName(l.k,l);tg.style.background='color-mix(in srgb,var('+kVar(l.k)+') 45%,var(--surface))';
     const me=document.createElement('span');me.textContent=(l.m||'(메모 없음)')+(l.k==='food'||l.k==='living'?'':' · 하루 예산 밖');const a=document.createElement('b');a.className='num';a.textContent=won(l.a);r.append(tg,me,a);list.append(r)});
-  // 하루 예산 입력칸
+  // 고른 날 예산 칸
+  {const di=$('dDayIn');const def=dayBudget(dWeek);$('dDayLabel').textContent=label+' 예산';
+    if(document.activeElement!==di)di.value=(state.dayb||{})[dSel]?fmt(state.dayb[dSel]):'';
+    di.placeholder=def?'기본 '+fmt(def):'예: 15,000';$('dDayClr').hidden=!(state.dayb||{})[dSel]}
+  // 이번 주 날짜별 7칸 (주가 바뀔 때만 새로 만들고, 입력 중인 칸은 건드리지 않음)
+  {const g=$('dWeekGrid'),key=ym+'#'+dWeek,def=dayBudget(dWeek);
+    if(g.dataset.key!==key){g.dataset.key=key;g.textContent='';days.forEach((ds,i)=>{const l=document.createElement('label');l.className=i===0?'sun':i===6?'sat':'';
+      const t=document.createElement('span');t.textContent=W[i];const sm=document.createElement('small');sm.textContent=md(dOf(ds));t.append(sm);
+      const inp=document.createElement('input');inp.type='text';inp.inputMode='numeric';inp.dataset.ds=ds;inp.setAttribute('aria-label',md(dOf(ds))+' 예산');
+      inp.addEventListener('input',()=>{const n=parse(inp.value);inp.value=fmt(n);if(n)state.dayb[ds]=n;else delete state.dayb[ds];changed();drawDay()});
+      l.append(t,inp);g.append(l)})}
+    g.querySelectorAll('input').forEach(inp=>{if(document.activeElement!==inp)inp.value=state.dayb[inp.dataset.ds]?fmt(state.dayb[inp.dataset.ds]):'';inp.placeholder=def?fmt(def):'예산'})}
+  // 기본 하루 예산 칸
   const bi=$('dBudgetIn');if(document.activeElement!==bi)bi.value=state.dbudget?fmt(state.dbudget):'';
   const auto=Math.floor((budgetFor(dWeek)||0)/7/10)*10;bi.placeholder=auto?fmt(auto)+' (한 주÷7)':'예: 15,000';
   $('dBudgetHint').textContent=state.dbudget?'직접 정함':auto?'자동':'';
 }
 $('dPrev').addEventListener('click',()=>{if(dWeek>0){dWeek--;dSel=null;drawDay()}});
 $('dNext').addEventListener('click',()=>{if(dWeek<weeksIn(ym)-1){dWeek++;dSel=null;drawDay()}});
+$('dDayIn').addEventListener('input',()=>{const i=$('dDayIn');const n=parse(i.value);i.value=fmt(n);if(!dSel)return;if(n)state.dayb[dSel]=n;else delete state.dayb[dSel];changed();drawDay()});
+$('dDayClr').addEventListener('click',()=>{if(dSel){delete state.dayb[dSel];$('dDayIn').value='';changed();drawDay()}});
 $('dBudgetIn').addEventListener('input',()=>{const i=$('dBudgetIn');const n=parse(i.value);i.value=fmt(n);state.dbudget=n;changed();drawDay()});
 $('dWrite').addEventListener('click',()=>{setTab('home');const q=$('qDate');if(q&&dSel&&dSel<=todayStr()&&inLedger(dSel))q.value=dSel;setTimeout(()=>{const a=$('qAmt');if(a)a.focus()},50)});
 
