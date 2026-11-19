@@ -338,6 +338,20 @@ body[data-tab="home"] .wrap [data-tab]:not([data-tab="home"]),body[data-tab="day
 .dweek label{display:grid;grid-template-columns:3.4em 1fr;align-items:center;gap:6px;font-size:13.5px;font-weight:500}
 .dweek label small{display:block;font-size:11px;color:var(--muted);font-weight:400}
 .dweek label.sun span{color:var(--bad)} .dweek label.sat span{color:#5f86c9}
+.day-strip .em{font-size:9.5px;font-weight:700;line-height:1.3;padding:0 3px;border-radius:3px;background:color-mix(in srgb,var(--ch-emer) 55%,transparent);color:var(--fg);white-space:nowrap}
+.day-wsum{display:flex;flex-direction:column;gap:3px;margin-top:8px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.day-wsum b.ok{color:var(--good)} .day-wsum b.over{color:var(--bad)}
+.emhl{color:var(--fg);padding:0 4px;border-radius:3px;background:linear-gradient(transparent 40%,color-mix(in srgb,var(--ch-emer) 60%,transparent) 40%)}
+.day-emer{font-size:13.5px;color:var(--muted)}
+.day-emin{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.day-emin .lbl{grid-column:1/-1;font-size:13px;font-weight:500}
+.day-emin input{min-width:0;width:100%;font:inherit;font-size:14px;color:var(--fg);background:var(--field);border:1px solid transparent;border-radius:8px;padding:8px 10px}
+.day-emin input:focus{border-color:var(--accent);outline:none;background:var(--surface)}
+#dEmAmt{text-align:right;font-variant-numeric:tabular-nums}
+#dEmMsg{margin-top:4px}
+.day-emin .emgo{grid-column:1/-1;border:0;border-radius:8px;padding:9px;background:var(--c-slate);color:var(--fg);font-weight:700}
+.dweek label .emx{grid-column:2;font-size:11px;font-weight:500;justify-self:end;margin-top:-2px}
+#ws0[aria-pressed="true"],#ws1[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
 @media (prefers-reduced-motion:reduce){.bar .fill{transition:none}}
 </style>
 
@@ -411,7 +425,10 @@ body[data-tab="home"] .wrap [data-tab]:not([data-tab="home"]),body[data-tab="day
   <section class="panel daypanel" data-tab="day" aria-label="하루 예산">
     <div class="day-nav"><button type="button" id="dPrev" aria-label="지난주">‹</button><h2 id="dTitle">하루 예산</h2><button type="button" id="dNext" aria-label="다음 주">›</button></div>
     <div class="day-strip" id="dStrip"></div>
+    <div class="day-wsum" id="dWeekSum"></div>
     <div class="day-main" id="dMain"></div>
+    <div class="day-emin"><span class="lbl">비상금 쓴 돈</span><input type="text" inputmode="numeric" id="dEmAmt" placeholder="금액" aria-label="비상금 쓴 돈"><input type="text" id="dEmMemo" maxlength="40" placeholder="어디에 (예: 이비인후과)" aria-label="비상금 어디에"><button type="button" id="dEmGo" class="emgo">비상금 적기</button></div>
+    <div class="quick-msg" id="dEmMsg" role="status"></div>
     <div class="day-own"><label for="dDayIn" id="dDayLabel">이 날 예산</label><input type="text" inputmode="numeric" id="dDayIn"><button type="button" class="linkbtn" id="dDayClr">기본으로</button></div>
     <div class="day-list" id="dList"></div>
     <button type="button" class="exportbtn" id="dWrite">이 날 쓴 돈 적기</button>
@@ -507,11 +524,15 @@ body[data-tab="home"] .wrap [data-tab]:not([data-tab="home"]),body[data-tab="day
       <div class="quick-msg" id="exportMsg" role="status"></div>
     </section>
     <section class="panel export">
-      <h2>화면</h2>
+      <h2>한 주 시작 요일</h2>
+      <p class="wk-hint">한 주 예산·하루 예산·달력·주차가 이 요일부터 시작해요. 그 달 1일이 들어 있는 주가 1주차예요.<span id="wsNote"></span></p>
+      <div class="namerow"><button type="button" class="exportbtn" id="ws0">일요일부터</button><button type="button" class="exportbtn" id="ws1">월요일부터</button></div>
+      <div class="quick-msg" id="wsMsg" role="status"></div>
+      <h2 style="margin-top:12px">화면</h2>
       <p class="wk-hint">카테고리와 그래프를 한꺼번에 접거나 펴요. 이 폰에만 적용돼요.</p>
       <div class="namerow"><button type="button" id="svFold" class="exportbtn">모두 접기</button><button type="button" id="svOpen" class="exportbtn">모두 펴기</button></div>
     </section>
-    <p class="wk-hint" style="text-align:center">앱 버전 <b class="num">2026.11.19-0902</b></p>
+    <p class="wk-hint" style="text-align:center">앱 버전 <b class="num">2026.11.19-0949</b></p>
   </div>
 </section>
 
@@ -551,8 +572,9 @@ const parse=s=>{const d=String(s).replace(/[^\d]/g,'');return d?Math.min(Number(
 const clone=o=>JSON.parse(JSON.stringify(o));
 const pad=n=>String(n).padStart(2,'0');
 
+let WSTART=0;try{WSTART=localStorage.getItem('gagyebu-wstart')==='1'?1:0}catch(e){} // 한 주 시작: 0=일요일, 1=월요일
 let now=new Date(); let ym=now.getFullYear()+'-'+pad(now.getMonth()+1);
-{const t=ym+'-'+pad(now.getDate());const nx=(()=>{let [y,m]=ym.split('-').map(Number);m++;if(m>12){m=1;y++}return y+'-'+String(m).padStart(2,'0')})();const sf=(s)=>{const [y,m]=s.split('-').map(Number);const f=new Date(y,m-1,1);return new Date(y,m-1,1-f.getDay())};if(new Date(now.getFullYear(),now.getMonth(),now.getDate())>=sf(nx))ym=nx;} // 11/29처럼 다음 달 1주차에 들어가는 날은 다음 달로 연다
+{const t=ym+'-'+pad(now.getDate());const nx=(()=>{let [y,m]=ym.split('-').map(Number);m++;if(m>12){m=1;y++}return y+'-'+String(m).padStart(2,'0')})();const sf=(s)=>{const [y,m]=s.split('-').map(Number);const f=new Date(y,m-1,1);return new Date(y,m-1,1-((f.getDay()-WSTART+7)%7))};if(new Date(now.getFullYear(),now.getMonth(),now.getDate())>=sf(nx))ym=nx;} // 11/29처럼 다음 달 1주차에 들어가는 날은 다음 달로 연다
 let state=clone(DEFAULT), exists=false, saveTimer=null, saving=false, dirty=false;
 
 function normalize(d){
@@ -784,9 +806,17 @@ $('appname').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.p
 
 // ---------- 설정 화면 (맨 위 ⚙) ----------
 let svScroll=0;
-function openSettings(focusId){svScroll=scrollY;drawCatSet();$('catMsg').textContent='';$('catNew').value='';$('nameSet').value=$('appname').textContent;['nameMsg','pinMsg','exportMsg'].forEach(k=>$(k).textContent='');['pinOld','pinNew1','pinNew2'].forEach(k=>$(k).value='');$('settingsView').hidden=false;$('settingsView').scrollTop=0;document.body.style.overflow='hidden';if(typeof focusId==='string'&&$(focusId)){$('catSet').scrollIntoView();setTimeout(()=>$(focusId).focus(),50)}else $('svBack').focus()}
+function wsDraw(){$('ws0').setAttribute('aria-pressed',String(WSTART===0));$('ws1').setAttribute('aria-pressed',String(WSTART===1));$('wsNote').textContent=GAS?' 가족 모두 같은 기준으로 바뀌어요.':''}
+// 이번 달 주차 칸이 모두 날짜 있는 내역에서 온 숫자면, 새 기준으로 다시 나눈다
+function rebucket(){WKEYS.forEach(k=>{const L=state.logs.filter(l=>l.k===k);const sumW=state.weekly[k].reduce((a,b)=>a+b,0),sumL=L.reduce((a,l)=>a+l.a,0);if(sumW!==sumL)return;const arr=Array(WEEKS).fill(0);L.forEach(l=>{arr[weekIdx(l.d)]+=l.a});state.weekly[k]=arr})}
+async function setWStart(v){if(v===WSTART)return;WSTART=v;try{localStorage.setItem('gagyebu-wstart',String(v))}catch(e){}
+  rebucket();changed();dWeek=null;dSel=null;$('dWeekGrid').dataset.key='';render();wsDraw();
+  $('wsMsg').textContent=(v?'월요일':'일요일')+'부터 시작하게 바꿨어요.'+(GAS?' 가족 폰에도 다음에 열 때 적용돼요.':'');
+  if(GAS){try{await call('setWeekStart',PIN,v)}catch(e){$('wsMsg').textContent='이 폰에는 바꿨지만 가족과 같이 쓰는 설정은 저장하지 못했어요. 다시 눌러 주세요.'}}}
+function openSettings(focusId){wsDraw();svScroll=scrollY;drawCatSet();$('catMsg').textContent='';$('catNew').value='';$('nameSet').value=$('appname').textContent;['nameMsg','pinMsg','exportMsg'].forEach(k=>$(k).textContent='');['pinOld','pinNew1','pinNew2'].forEach(k=>$(k).value='');$('settingsView').hidden=false;$('settingsView').scrollTop=0;document.body.style.overflow='hidden';if(typeof focusId==='string'&&$(focusId)){$('catSet').scrollIntoView();setTimeout(()=>$(focusId).focus(),50)}else $('svBack').focus()}
 function closeSettings(){$('settingsView').hidden=true;document.body.style.overflow='';scrollTo(0,svScroll)}
 $('gear').addEventListener('click',()=>openSettings());
+$('ws0').addEventListener('click',()=>setWStart(0));$('ws1').addEventListener('click',()=>setWStart(1));
 $('catAdd').addEventListener('click',()=>{if(addCat($('catNew').value))$('catNew').value=''});
 $('catNew').addEventListener('keydown',e=>{if(e.key==='Enter')$('catAdd').click()});
 $('svBack').addEventListener('click',closeSettings);
@@ -891,7 +921,8 @@ function daysIn(s){const [y,m]=s.split('-').map(Number);return new Date(y,m,0).g
 const DAY=86400000;
 function dOf(str){const [y,m,d]=str.split('-').map(Number);return new Date(y,m-1,d)}
 function dStr(dt){return dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate())}
-function startOf(s){const [y,m]=s.split('-').map(Number);const f=new Date(y,m-1,1);return new Date(y,m-1,1-f.getDay())}
+function startOf(s){const [y,m]=s.split('-').map(Number);const f=new Date(y,m-1,1);return new Date(y,m-1,1-((f.getDay()-WSTART+7)%7))}
+const WD=['일','월','화','수','목','금','토'];
 function weeksIn(s){return Math.round((startOf(nextYm(s))-startOf(s))/DAY/7)}
 function ledgerYm(str){const own=str.slice(0,7),nx=nextYm(own);return dOf(str)>=startOf(nx)?nx:own}
 function weekIdx(str){return Math.max(0,Math.min(WEEKS-1,Math.floor((dOf(str)-startOf(ledgerYm(str)))/DAY/7)))}
@@ -944,12 +975,13 @@ function updateWeek(){
 let dWeek=null,dSel=null;
 function dayBudget(wi){return state.dbudget||Math.floor((budgetFor(wi)||0)/7/10)*10} // 기본 하루 예산
 function dayB(ds,wi){return (state.dayb||{})[ds]||dayBudget(wi)} // 그 날 예산: 날짜별로 적은 값 > 기본
+function dayEmer(ds){return state.logs.filter(l=>l.d===ds&&l.k==='emer').reduce((a,l)=>a+l.a,0)}
 function daySpent(ds){return state.logs.filter(l=>l.d===ds&&(l.k==='food'||l.k==='living')).reduce((a,l)=>a+l.a,0)}
 function drawDay(){
   const strip=$('dStrip');if(!strip)return;
   const nW=weeksIn(ym),tw=thisWeek();
   if(dWeek===null||dWeek>=nW)dWeek=tw>=0?tw:0;
-  const [ws]=weekDates(dWeek),tStr=todayStr(),W=['일','월','화','수','목','금','토'];
+  const [ws]=weekDates(dWeek),tStr=todayStr(),W=WD;
   const days=[...Array(7)].map((_,i)=>dStr(new Date(ws.getTime()+i*DAY)));
   if(!dSel||!days.includes(dSel))dSel=days.includes(tStr)?tStr:days[0];
   $('dTitle').textContent=Number(ym.slice(5))+'월 '+(dWeek+1)+'주 · '+md(dOf(days[0]))+'~'+md(dOf(days[6]));
@@ -960,11 +992,18 @@ function drawDay(){
   strip.textContent='';
   days.forEach((ds,i)=>{const f=info[ds];const b=document.createElement('button');b.type='button';
     b.className=(ds===dSel?'sel ':'')+(ds===tStr?'today ':'')+(ds>tStr?'future':'');
-    const w=document.createElement('span');w.className='w';w.textContent=W[i];
+    const w=document.createElement('span');w.className='w';w.textContent=W[dOf(ds).getDay()];
     const n=document.createElement('span');n.className='n';n.textContent=dOf(ds).getDate();
-    const r=document.createElement('span');r.className='r num '+(!f.b||ds>tStr?'nil':f.left>=0?'ok':'over');
-    r.textContent=!f.b?(f.sp?short(f.sp):'-'):ds>tStr?short(f.b):(f.left>=0?'+':'-')+short(Math.abs(f.left));
-    b.append(w,n,r);b.addEventListener('click',()=>{dSel=ds;drawDay()});strip.append(b)});
+    const own=f.b-f.sp; // 그 날 하루만의 +/- (이월 빼고)
+    const r=document.createElement('span');r.className='r num '+(!f.b||ds>tStr?'nil':own>=0?'ok':'over');
+    r.textContent=!f.b?(f.sp?short(f.sp):'-'):ds>tStr?short(f.b):(own>=0?'+':'-')+short(Math.abs(own));
+    b.append(w,n,r);
+    const em=dayEmer(ds);if(em){const e=document.createElement('span');e.className='em num';e.textContent='비 '+short(em);b.append(e)}b.addEventListener('click',()=>{dSel=ds;drawDay()});strip.append(b)});
+  // 이번 주 합계: 예산·쓴 돈·남은 돈, 비상금
+  {const ws2=$('dWeekSum');ws2.textContent='';const upto=days.filter(x=>x<=tStr);
+    const bud=upto.reduce((a,x)=>a+info[x].b,0),sp=upto.reduce((a,x)=>a+info[x].sp,0),em=days.reduce((a,x)=>a+dayEmer(x),0),eb=ebudgetFor(dWeek);
+    if(upto.length&&bud){const a=document.createElement('div');a.className='ws-row';a.append((upto.length===7?'이번 주':'오늘까지')+' 예산 '+won(bud)+' · 쓴 돈 '+won(sp)+' → ');const bb=document.createElement('b');bb.className=bud-sp>=0?'ok':'over';bb.textContent=(bud-sp>=0?'+':'-')+won(Math.abs(bud-sp));a.append(bb);ws2.append(a)}
+    if(em||eb){const e=document.createElement('div');e.className='ws-row';const hl=document.createElement('b');hl.className='emhl';hl.textContent='비상금 '+won(em)+' 썼어요';e.append(hl);if(eb)e.append(' · 이번 주 비상금 예산 '+won(eb)+(eb-em>=0?', '+won(eb-em)+' 남음':', '+won(em-eb)+' 넘음'));ws2.append(e)}}
   // 고른 날
   const f=info[dSel],main=$('dMain');main.textContent='';
   const dd=dOf(dSel);const label=(dSel===tStr?'오늘':md(dd)+' ('+W[dd.getDay()]+')');const B=f.b;
@@ -978,8 +1017,9 @@ function drawDay(){
     const mt=document.createElement('div');mt.className='meter';const fi=document.createElement('i');const rr=f.avail>0?Math.min(1,f.sp/f.avail):(f.sp?1:0);fi.style.width=(rr*100)+'%';fi.className=f.sp>f.avail?'over':rr>=.8?'warn':'';mt.append(fi);main.append(mt);
     const cr=document.createElement('div');cr.className='day-carry'+(f.carry<0?' neg':'');
     cr.textContent=(f.own?'이 날 예산 ':'기본 하루 예산 ')+won(B)+(f.carry?(f.carry>0?' + 그 전날까지 아낀 돈 '+won(f.carry):' − 그 전날까지 넘은 돈 '+won(-f.carry)):'');main.append(cr);
+    {const em=dayEmer(dSel);if(em){const e=document.createElement('div');e.className='day-emer';const hl=document.createElement('b');hl.className='emhl';hl.textContent='비상금 '+won(em)+' 썼어요';e.append(hl,' (하루 예산과 따로 계산)');main.append(e)}}
     if(dWeek===tw){const lastDay=days[6];const rest=Math.round((dOf(lastDay)-dOf(tStr))/DAY);const endLeft=info[tStr]?info[tStr].left:0;
-      if(rest>0){const h=document.createElement('div');h.className='wk-hint';h.textContent='토요일까지 '+rest+'일 남았어요. 오늘까지 '+(endLeft>=0?'아낀 돈 '+won(endLeft)+'은 내일로 넘어가요.':'넘은 '+won(-endLeft)+'은 내일 예산에서 빠져요.');main.append(h)}}
+      if(rest>0){const h=document.createElement('div');h.className='wk-hint';h.textContent=WD[dOf(lastDay).getDay()]+'요일까지 '+rest+'일 남았어요. 오늘까지 '+(endLeft>=0?'아낀 돈 '+won(endLeft)+'은 내일로 넘어가요.':'넘은 '+won(-endLeft)+'은 내일 예산에서 빠져요.');main.append(h)}}
   }
   // 그날 내역
   const list=$('dList');list.textContent='';
@@ -993,17 +1033,24 @@ function drawDay(){
     di.placeholder=def?'기본 '+fmt(def):'예: 15,000';$('dDayClr').hidden=!(state.dayb||{})[dSel]}
   // 이번 주 날짜별 7칸 (주가 바뀔 때만 새로 만들고, 입력 중인 칸은 건드리지 않음)
   {const g=$('dWeekGrid'),key=ym+'#'+dWeek,def=dayBudget(dWeek);
-    if(g.dataset.key!==key){g.dataset.key=key;g.textContent='';days.forEach((ds,i)=>{const l=document.createElement('label');l.className=i===0?'sun':i===6?'sat':'';
-      const t=document.createElement('span');t.textContent=W[i];const sm=document.createElement('small');sm.textContent=md(dOf(ds));t.append(sm);
+    if(g.dataset.key!==key){g.dataset.key=key;g.textContent='';days.forEach((ds,i)=>{const wdi=dOf(ds).getDay();const l=document.createElement('label');l.className=wdi===0?'sun':wdi===6?'sat':'';
+      const t=document.createElement('span');t.textContent=W[wdi];const sm=document.createElement('small');sm.textContent=md(dOf(ds));t.append(sm);
       const inp=document.createElement('input');inp.type='text';inp.inputMode='numeric';inp.dataset.ds=ds;inp.setAttribute('aria-label',md(dOf(ds))+' 예산');
       inp.addEventListener('input',()=>{const n=parse(inp.value);inp.value=fmt(n);if(n)state.dayb[ds]=n;else delete state.dayb[ds];changed();drawDay()});
-      l.append(t,inp);g.append(l)})}
-    g.querySelectorAll('input').forEach(inp=>{if(document.activeElement!==inp)inp.value=state.dayb[inp.dataset.ds]?fmt(state.dayb[inp.dataset.ds]):'';inp.placeholder=def?fmt(def):'예산'})}
+      const ex=document.createElement('small');ex.className='emx emhl';ex.dataset.ds=ds;l.append(t,inp,ex);g.append(l)})}
+    g.querySelectorAll('input').forEach(inp=>{if(document.activeElement!==inp)inp.value=state.dayb[inp.dataset.ds]?fmt(state.dayb[inp.dataset.ds]):'';inp.placeholder=def?fmt(def):'예산'});
+    g.querySelectorAll('.emx').forEach(x=>{const em=dayEmer(x.dataset.ds);x.textContent=em?'비상금 '+short(em):'';x.hidden=!em})}
   // 기본 하루 예산 칸
   const bi=$('dBudgetIn');if(document.activeElement!==bi)bi.value=state.dbudget?fmt(state.dbudget):'';
   const auto=Math.floor((budgetFor(dWeek)||0)/7/10)*10;bi.placeholder=auto?fmt(auto)+' (한 주÷7)':'예: 15,000';
   $('dBudgetHint').textContent=state.dbudget?'직접 정함':auto?'자동':'';
 }
+$('dEmAmt').addEventListener('input',()=>{const i=$('dEmAmt');i.value=fmt(parse(i.value))});
+$('dEmGo').addEventListener('click',()=>{const n=parse($('dEmAmt').value),msg=$('dEmMsg');if(!n){$('dEmAmt').focus();return}
+  if(!dSel||!inLedger(dSel)){msg.textContent='이 달에 속한 날짜를 골라 주세요.';return}
+  if(dSel>todayStr()){msg.textContent='앞으로 올 날에는 적을 수 없어요.';return}
+  const memo=$('dEmMemo').value.trim();addLog(dSel,'emer',n,memo);$('dEmAmt').value='';$('dEmMemo').value='';
+  msg.textContent=md(dOf(dSel))+' 비상금 '+won(n)+(memo?' ('+memo+')':'')+' 적었어요.';drawDay()});
 $('dPrev').addEventListener('click',()=>{if(dWeek>0){dWeek--;dSel=null;drawDay()}});
 $('dNext').addEventListener('click',()=>{if(dWeek<weeksIn(ym)-1){dWeek++;dSel=null;drawDay()}});
 $('dDayIn').addEventListener('input',()=>{const i=$('dDayIn');const n=parse(i.value);i.value=fmt(n);if(!dSel)return;if(n)state.dayb[dSel]=n;else delete state.dayb[dSel];changed();drawDay()});
@@ -1017,12 +1064,12 @@ let calSel=null;
 function drawCal(){
   const g=$('calGrid');if(!g)return;g.textContent='';
   const tStr=todayStr(),st=startOf(ym),nDays=weeksIn(ym)*7,mNum=Number(ym.slice(5));
-  ['일','월','화','수','목','금','토'].forEach((w,i)=>{const h=document.createElement('div');h.className='cal-h'+(i===0?' sun':i===6?' sat':'');h.textContent=w;g.append(h)});
+  [0,1,2,3,4,5,6].map(i=>(i+WSTART)%7).forEach(i=>{const h=document.createElement('div');h.className='cal-h'+(i===0?' sun':i===6?' sat':'');h.textContent=WD[i];g.append(h)});
   const byDay={};state.logs.forEach(l=>{if(!inLedger(l.d))return;(byDay[l.d]=byDay[l.d]||[]).push(l)});
   if(calSel&&!inLedger(calSel))calSel=null;
   if(!calSel)calSel=inLedger(tStr)?tStr:null;
   for(let n=0;n<nDays;n++){
-    const dt=new Date(st.getTime()+n*DAY),ds=dStr(dt),d=dt.getDate(),wd=n%7,L=byDay[ds]||[],other=dt.getMonth()+1!==mNum;
+    const dt=new Date(st.getTime()+n*DAY),ds=dStr(dt),d=dt.getDate(),wd=dt.getDay(),L=byDay[ds]||[],other=dt.getMonth()+1!==mNum;
     const c=document.createElement('button');c.type='button';c.className='cal-c'+(wd===0?' sun':wd===6?' sat':'')+(ds===tStr?' today':'')+(ds===calSel?' sel':'')+(other?' other':'');
     const sp=L.filter(l=>l.k!=='save').reduce((a,l)=>a+l.a,0),sv=L.filter(l=>l.k==='save').reduce((a,l)=>a+l.a,0);
     const dn=document.createElement('span');dn.className='dn';dn.textContent=other||d===1?(dt.getMonth()+1)+'/'+d:d;c.append(dn);
@@ -1375,6 +1422,7 @@ async function loadMonth(quiet){
   }
   if(seq!==loadSeq||myYm!==ym)return;
   if(quiet&&(dirty||saving||inputFocused()))return;
+  if(res&&res.wstart!=null&&res.wstart!==''){const v=res.wstart==='1'?1:0;if(v!==WSTART){WSTART=v;try{localStorage.setItem('gagyebu-wstart',String(v))}catch(e){}dWeek=null;dSel=null;const g=$('dWeekGrid');if(g)g.dataset.key=''}}
   if(res&&Array.isArray(res.inst)&&!instDirty){inst=res.inst.map(it=>({id:String(it.id),name:it.name||'',card:it.card||'',total:Number(it.total)||0,n:Number(it.n)||0,start:it.start||'',monthly:Number(it.monthly)||0,memo:it.memo||''}))}
   else if(!GAS&&!instDirty){try{inst=JSON.parse(localStorage.getItem(IKEY)||'[]')}catch(e){inst=[]}}
   if(res&&res.trend){trend={};res.trend.forEach(r=>{const n=i=>Number(r[i])||0;trend[r[0]]={i:n(1),o:n(2),c:{fixed:n(3),food:n(4),living:n(5),special:n(6),oil:n(7),kid1:n(8),kid2:n(9),inst:n(10),emer:n(11),custom:n(13)}}})}
